@@ -1,0 +1,5 @@
+Forwarding from 127.0.0.1:8003 -> 8000
+Forwarding from [::1]:8003 -> 8000
+Handling connection for 8003
+E1119 18:09:54.586940    1516 portforward.go:413] an error occurred forwarding 8003 -> 8000: error forwarding port 8000 to pod e1778d83a979df4795e0c3ad8530fafcaab93ef1da34362eadaee665a5fc3bb3, uid : Error response from daemon: No such container: e1778d83a979df4795e0c3ad8530fafcaab93ef1da34362eadaee665a5fc3bb3
+error: lost connection to pod

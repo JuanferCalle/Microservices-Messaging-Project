@@ -74,7 +74,7 @@ spec:
             - name: SERVICE_NAME
               value: admission
           ports:
-            - containerPort: 8001
+            - containerPort: 8000
 ---
 apiVersion: v1
 kind: Service
@@ -86,7 +86,7 @@ spec:
     app: admission
   ports:
     - port: 8001
-      targetPort: 8001
+      targetPort: 8000
   type: ClusterIP
 ---
 # Doctor Assignment service (consumer / worker)
