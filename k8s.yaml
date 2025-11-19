@@ -89,8 +89,7 @@ spec:
       targetPort: 8001
   type: ClusterIP
 ---
-
-# Admission service (producer / seeder)
+# Doctor Assignment service (consumer / worker)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -111,8 +110,8 @@ spec:
           image: hospital-doctor-assignment:latest
           imagePullPolicy: IfNotPresent
           env:
-            - name: RABBITMQ_URL
-              value: amqp://guest:guest@rabbitmq/
+            - name: RABBITMQ_HOST
+              value: rabbitmq
             - name: SERVICE_NAME
               value: doctor-assignment
           ports:
@@ -129,8 +128,7 @@ spec:
   ports:
     - port: 8003
       targetPort: 8003
-  type: ClusterIP
----
+
 # monitor (listens to all topics)
 apiVersion: apps/v1
 kind: Deployment
