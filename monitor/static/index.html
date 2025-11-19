@@ -1,0 +1,187 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Hospital Monitor</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { margin-bottom: 8px; }
+    table { border-collapse: collapse; width: 100%; max-width: 1000px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f4f4f4; }
+    tr:nth-child(even){ background: #fafafa; }
+    .ok { color: green; font-weight: bold; }
+    .warn { color: orange; font-weight: bold; }
+    .bad { color: red; font-weight: bold; }
+    .small { font-size: 0.9rem; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Monitor del Hospital</h1>
+  <p class="small">Conexión SSE al monitor. Vista en tiempo real de pacientes y estado de cada servicio.</p>
+
+  <div id="messages" style="margin-bottom:12px; max-width:1000px;">
+    <strong>Registro legible:</strong>
+    <div id="log" style="border:1px solid #eee; padding:8px; height:80px; overflow:auto; background:#fafafa; font-size:0.95rem;"></div>
+  </div>
+
+  <table id="statusTable">
+    <thead>
+      <tr>
+        <th>Paciente (ID)</th>
+        <th>Último evento</th>
+        <th>Admisión</th>
+        <th>Triage (prioridad)</th>
+        <th>Doctor asignado</th>
+        <th>Signos vitales</th>
+        <th>Exámenes</th>
+        <th>Diagnóstico</th>
+        <th>Tratamiento</th>
+        <th>Farmacia</th>
+        <th>Facturación</th>
+        <th>Alta</th>
+        <th>Visto</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <script>
+    const rows = {};
+    function mkRow(pid) {
+      const tr = document.createElement('tr');
+      tr.dataset.pid = pid;
+      tr.innerHTML = `
+        <td class="pid">${pid}</td>
+        <td class="lastEvent">-</td>
+        <td class="admission">-</td>
+        <td class="triage">-</td>
+        <td class="doctor">-</td>
+        <td class="vitals">-</td>
+        <td class="exam">-</td>
+        <td class="diagnosis">-</td>
+        <td class="treatment">-</td>
+        <td class="pharmacy">-</td>
+        <td class="billing">-</td>
+        <td class="discharge">-</td>
+        <td class="seen small">-</td>
+      `;
+      rows[pid] = tr;
+      return tr;
+    }
+
+    function appendLog(text) {
+      const log = document.getElementById('log');
+      const time = new Date().toLocaleTimeString();
+      log.innerHTML = `<div>[${time}] ${text}</div>` + log.innerHTML;
+    }
+
+    function updateCell(pid, key, value) {
+      if (!rows[pid]) {
+        const tr = mkRow(pid);
+        document.getElementById('rows').appendChild(tr);
+      }
+      const tr = rows[pid];
+      const cell = tr.querySelector('.' + key);
+      if (!cell) return;
+      if (typeof value === 'object') {
+        // render small summary
+        if (value.priority) cell.textContent = value.priority;
+        else cell.textContent = JSON.stringify(value);
+      } else {
+        cell.textContent = String(value);
+      }
+      // style classes para triage
+      if (key === 'triage') {
+        const val = String(cell.textContent).toLowerCase();
+        if (val === 'high' || val === 'alta') cell.className = 'triage bad';
+        else if (val === 'medium' || val === 'media' || val === 'moderate') cell.className = 'triage warn';
+        else cell.className = 'triage ok';
+      }
+    }
+
+    function markLastEvent(pid, rk, payload) {
+      if (!rows[pid]) {
+        const tr = mkRow(pid);
+        document.getElementById('rows').appendChild(tr);
+      }
+      const tr = rows[pid];
+      // traducir routing key a texto legible
+      const mapping = {
+        'patient.arrived': 'Llegada a admisiones',
+        'triage.completed': 'Triage completado',
+        'vitals.completed': 'Signos tomados',
+        'doctor.assigned': 'Doctor asignado',
+        'exam.completed': 'Examen completo',
+        'diagnosis.completed': 'Diagnóstico listo',
+        'treatment.completed': 'Tratamiento completado',
+        'pharmacy.dispensed': 'Medicamento dispensado',
+        'billing.completed': 'Facturación',
+        'discharge.completed': 'Alta'
+      };
+      const text = mapping[rk] || rk;
+      tr.querySelector('.lastEvent').textContent = text;
+      tr.querySelector('.seen').textContent = new Date().toLocaleTimeString();
+      // mensaje legible adicional
+      if (rk === 'patient.arrived') {
+        const name = (payload && (payload.name || payload.patient_name)) || pid;
+        appendLog(`Paciente ${name} (${pid}) llegó a admisiones`);
+        updateCell(pid, 'admission', 'Llegó');
+      }
+    }
+
+    const evt = new EventSource('/stream');
+    evt.onmessage = function(e) {
+      try {
+        const ev = JSON.parse(e.data);
+        const rk = ev.routing_key;
+        const payload = ev.payload || {};
+        const pid = payload.patient_id || payload.patient || payload.id || 'unknown';
+        markLastEvent(pid, rk, payload);
+        // mapear routing keys a columnas y contenido en español
+        if (rk === 'patient.arrived') {
+          updateCell(pid, 'admission', 'Llegó');
+        }
+        if (rk === 'triage.completed') {
+          const pr = (payload.triage && (payload.triage.priority || payload.triage)) || payload.priority || 'media';
+          updateCell(pid, 'triage', pr);
+          appendLog(`Triage: paciente ${pid} prioridad ${pr}`);
+        }
+        if (rk === 'vitals.completed') {
+          updateCell(pid, 'vitals', payload.vitals || payload.readings || 'ok');
+        }
+        if (rk === 'doctor.assigned') {
+          const doc = (payload.doctor && (payload.doctor.name || payload.doctor.id)) || payload.doctor || 'desconocido';
+          updateCell(pid, 'doctor', doc);
+          appendLog(`Doctor asignado a ${pid}: ${doc}`);
+        }
+        if (rk === 'exam.completed') {
+          updateCell(pid, 'exam', (payload.exam && (payload.exam.result || payload.exam)) || 'listo');
+        }
+        if (rk === 'diagnosis.completed') {
+          updateCell(pid, 'diagnosis', (payload.diagnosis && (payload.diagnosis.code || payload.diagnosis)) || 'listo');
+        }
+        if (rk === 'treatment.completed') {
+          updateCell(pid, 'treatment', (payload.treatment && (payload.treatment.plan || payload.treatment)) || 'aplicado');
+        }
+        if (rk === 'pharmacy.dispensed' || rk === 'pharmacy.completed') {
+          updateCell(pid, 'pharmacy', (payload.pharmacy && payload.pharmacy.dispensed) || 'dispensado');
+        }
+        if (rk === 'billing.completed' || rk === 'billing.paid') {
+          updateCell(pid, 'billing', (payload.billing && payload.billing.total) || 'facturado');
+        }
+        if (rk === 'discharge.completed') {
+          updateCell(pid, 'discharge', 'Sí');
+          appendLog(`Paciente ${pid} dado de alta`);
+        }
+      } catch (e) {
+        console.error('parse err', e);
+      }
+    };
+
+    evt.onerror = function(e) {
+      console.error('SSE error', e);
+    };
+  </script>
+</body>
+</html>

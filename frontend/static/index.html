@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Hospital Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 18px }
+    #events { max-width: 900px; }
+    .event { border-bottom: 1px solid #eee; padding: 6px 0 }
+    .meta { color: #666; font-size: 0.9em }
+    .patient { font-weight: bold }
+    #controls { margin-bottom: 12px }
+    button { padding: 8px 12px }
+  </style>
+</head>
+<body>
+  <h1>Hospital Dashboard - Monitor</h1>
+  <div id="controls">
+     <!-- Frontend is monitor-only; seeding is handled by the admission service -->
+    <span id="status">Not connected</span>
+  </div>
+  <div id="events"></div>
+
+<script>
+(async function(){
+  const cfg = await fetch('/config').then(r=>r.json()).catch(()=>({monitor_stream:'/stream', triage_host:'/simulate_arrival'}));
+  const streamUrl = cfg.monitor_stream || '/stream';
+  const triageHost = cfg.triage_host || '/simulate_arrival';
+
+  function addEvent(e){
+    const el = document.createElement('div');
+    el.className = 'event';
+    const header = document.createElement('div');
+    header.className = 'meta';
+    header.textContent = `${new Date(e.timestamp*1000).toLocaleTimeString()} — ${e.routing_key}`;
+    const payload = document.createElement('pre');
+    payload.textContent = JSON.stringify(e.payload, null, 2);
+    el.appendChild(header);
+    el.appendChild(payload);
+    document.getElementById('events').prepend(el);
+  }
+
+  let evtSource = null;
+  try{
+    evtSource = new EventSource(streamUrl);
+    evtSource.onopen = ()=> document.getElementById('status').textContent = 'Connected';
+    evtSource.onerror = ()=> document.getElementById('status').textContent = 'Disconnected';
+    evtSource.onmessage = (msg)=>{
+      try{
+        const ev = JSON.parse(msg.data);
+        addEvent(ev);
+      }catch(e){ console.error(e) }
+    }
+  }catch(e){ console.error(e); document.getElementById('status').textContent = 'SSE not supported'; }
+
+  document.getElementById('seed').addEventListener('click', async ()=>{
+     // Monitor-only UI: no seeding control here
+  });
+})();
+</script>
+</body>
+</html>

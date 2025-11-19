@@ -1,0 +1,133 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hospital
+---
+# RabbitMQ (management)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: hospital
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management
+          ports:
+            - containerPort: 5672
+            - containerPort: 15672
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              value: "guest"
+            - name: RABBITMQ_DEFAULT_PASS
+              value: "guest"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: hospital
+spec:
+  selector:
+    app: rabbitmq
+  ports:
+    - port: 5672
+      targetPort: 5672
+      name: amqp
+    - port: 15672
+      targetPort: 15672
+      name: management
+  type: ClusterIP
+---
+# Admission service (producer / seeder)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admission
+  namespace: hospital
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admission
+  template:
+    metadata:
+      labels:
+        app: admission
+    spec:
+      containers:
+        - name: admission
+          image: hospital-admission:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RABBITMQ_HOST
+              value: rabbitmq
+            - name: SERVICE_NAME
+              value: admission
+          ports:
+            - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admission
+  namespace: hospital
+spec:
+  selector:
+    app: admission
+  ports:
+    - port: 8000
+      targetPort: 8001
+  type: ClusterIP
+---
+# monitor (listens to all topics)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitor
+  namespace: hospital
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monitor
+  template:
+    metadata:
+      labels:
+        app: monitor
+    spec:
+      containers:
+        - name: monitor
+          image: hospital-monitor:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RABBITMQ_HOST
+              value: rabbitmq
+            - name: SERVICE_NAME
+              value: monitor
+            - name: CONSUME_KEY
+              value: "#"
+          ports:
+            - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitor
+  namespace: hospital
+spec:
+  selector:
+    app: monitor
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP

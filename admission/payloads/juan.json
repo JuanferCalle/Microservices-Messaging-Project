@@ -1,0 +1,8 @@
+{
+  "patient_id": "juan-001",
+  "name": "Juan",
+  "age": 35,
+  "symptoms": "dolor de cabeza",
+  "arrival_source": "simulado",
+  "notes": "Simulación: comprobar que monitor recibe patient.arrived"
+}
