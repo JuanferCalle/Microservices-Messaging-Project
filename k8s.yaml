@@ -173,3 +173,44 @@ spec:
     - port: 8000
       targetPort: 8000
   type: ClusterIP
+
+# Discharge service (consumes billing.# and publishes discharge.completed)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discharge
+  namespace: hospital
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discharge
+  template:
+    metadata:
+      labels:
+        app: discharge
+    spec:
+      containers:
+        - name: discharge
+          image: hospital-discharge:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RABBITMQ_HOST
+              value: rabbitmq
+            - name: SERVICE_NAME
+              value: discharge
+          ports:
+            - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: discharge
+  namespace: hospital
+spec:
+  selector:
+    app: discharge
+  ports:
+    - port: 8009
+      targetPort: 8000
+  type: ClusterIP
