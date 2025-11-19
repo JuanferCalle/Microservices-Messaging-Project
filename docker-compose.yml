@@ -34,10 +34,31 @@ services:
     depends_on:
       - rabbitmq
 
+
+  doctor-assignment:
+    build: ./doctor-assignment
+    ports:
+      - "8003:8003"
+    restart: unless-stopped
+    environment:
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      -
+
   monitor:
     build: ./monitor
     ports:
       - "8000:8000"
+    environment:
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      - rabbitmq
+
+  discharge:  
+    build: ./discharge
+    ports:
+      - "8009:8000"
+    restart: unless-stopped
     environment:
       RABBITMQ_HOST: rabbitmq
     depends_on:
