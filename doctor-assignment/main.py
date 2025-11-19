@@ -1,101 +1,108 @@
-import asyncio
-import json
 import os
+import json
+import threading
+import time
 import uuid
 from datetime import datetime
 
+import pika
 from fastapi import FastAPI
-from aio_pika import connect_robust, Message, ExchangeType, IncomingMessage
 
-app = FastAPI(title="doctor-assignment")
+SERVICE_NAME = os.getenv("SERVICE_NAME", "doctor-assignment")
+RABBIT_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
 
-RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq/")
-EXCHANGE_NAME = "hospital"
+app = FastAPI(title=SERVICE_NAME)
 
-ROUTING_KEY_IN = "triage.completed"
-ROUTING_KEY_OUT = "doctor.assigned"
-QUEUE_NAME = "doctor-assignment-triage-completed"
+connection_params = pika.ConnectionParameters(host=RABBIT_HOST)
 
-connection = None
-channel = None
-exchange = None
-
-# Lista simple de doctores
+# Lista cíclica simple de doctores
 DOCTORS = ["doc-1", "doc-2", "doc-3"]
-current_doctor = 0
-doctor_lock = asyncio.Lock()
+doctor_index = 0
 
 
-async def choose_doctor():
-    global current_doctor
-    async with doctor_lock:
-        doctor = DOCTORS[current_doctor % len(DOCTORS)]
-        current_doctor += 1
-        return doctor
+def pick_doctor():
+    global doctor_index
+    doctor_id = DOCTORS[doctor_index % len(DOCTORS)]
+    doctor_index += 1
+    return doctor_id
 
 
-async def process_triage(message: IncomingMessage):
-    async with message.process():
-        try:
-            data = json.loads(message.body)
-        except:
-            print("❌ Mensaje inválido, no es JSON")
-            return
+def publish_event(event: dict, routing_key: str):
+    """Publica un evento en el exchange hospital."""
+    conn = pika.BlockingConnection(connection_params)
+    ch = conn.channel()
 
-        patient_id = data.get("patient_id")
-        if not patient_id:
-            print("❌ triage.completed sin patient_id")
-            return
-
-        doctor_id = await choose_doctor()
-
-        event = {
-            "patient_id": patient_id,
-            "doctor_id": doctor_id,
-            "event_id": str(uuid.uuid4()),
-            "timestamp": datetime.utcnow().isoformat() + "Z"
-        }
-
-        body = json.dumps(event).encode()
-
-        await exchange.publish(
-            Message(body=body, content_type="application/json"),
-            routing_key=ROUTING_KEY_OUT
-        )
-
-        print(f"✔ doctor.assigned enviado → {event}")
-
-
-async def setup_rabbitmq():
-    global connection, channel, exchange
-    connection = await connect_robust(RABBITMQ_URL)
-    channel = await connection.channel()
-
-    exchange = await channel.declare_exchange(
-        EXCHANGE_NAME,
-        ExchangeType.TOPIC,
-        durable=True
+    ch.exchange_declare(exchange="hospital", exchange_type="topic", durable=True)
+    ch.basic_publish(
+        exchange="hospital",
+        routing_key=routing_key,
+        body=json.dumps(event)
     )
 
-    queue = await channel.declare_queue(QUEUE_NAME, durable=True)
-    await queue.bind(exchange, routing_key=ROUTING_KEY_IN)
-    await queue.consume(process_triage)
+    print(f"[doctor-assignment] Published {routing_key}: {event}")
+    conn.close()
 
-    print("👂 doctor-assignment escuchando triage.completed...")
+
+def process_message(ch, method, properties, body):
+    """Callback cuando llega triage.completed"""
+
+    try:
+        data = json.loads(body)
+    except Exception:
+        print("❌ Received invalid JSON")
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        return
+
+    patient_id = data.get("patient_id")
+    if not patient_id:
+        print("❌ triage.completed missing patient_id")
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        return
+
+    doctor_id = pick_doctor()
+
+    event = {
+        "patient_id": patient_id,
+        "doctor_id": doctor_id,
+        "event_id": str(uuid.uuid4()),
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
+
+    publish_event(event, "doctor.assigned")
+
+    ch.basic_ack(delivery_tag=method.delivery_tag)
+
+
+def start_consumer():
+    """Thread que queda escuchando triage.completed"""
+    print("👂 doctor-assignment waiting for triage.completed...")
+
+    conn = pika.BlockingConnection(connection_params)
+    ch = conn.channel()
+
+    ch.exchange_declare(exchange="hospital", exchange_type="topic", durable=True)
+
+    # Cola duradera y bind
+    queue_name = "doctor-assignment-triage-completed"
+    ch.queue_declare(queue=queue_name, durable=True)
+    ch.queue_bind(
+        exchange="hospital",
+        queue=queue_name,
+        routing_key="triage.completed"
+    )
+
+    ch.basic_consume(queue=queue_name, on_message_callback=process_message)
+
+    ch.start_consuming()
 
 
 @app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(setup_rabbitmq())
+def startup_event():
+    """Arranca un thread separado para consumir mensajes"""
+    t = threading.Thread(target=start_consumer, daemon=True)
+    t.start()
 
 
 @app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    if connection:
-        await connection.close()
-
+def health():
+    return {"status": "ok", "service": SERVICE_NAME}
