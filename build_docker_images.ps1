@@ -1,7 +1,8 @@
 # Build all service images using Docker (for Docker Desktop Kubernetes)
-# Run from repository root: `.uild_docker_images.ps1`
+# Run from repository root: `.build_docker_images.ps1`
 
 $services = @(
+  'admission',
   'triage',
   'vitals',
   'doctor-assignment',

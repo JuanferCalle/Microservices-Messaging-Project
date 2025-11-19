@@ -1,3 +1,4 @@
+
 ## Guía rápida de inicio — Para quien acaba de llegar
 
 Este repositorio contiene dos microservicios listos para desarrollo local:
