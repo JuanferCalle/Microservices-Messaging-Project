@@ -1,0 +1,8 @@
+{
+  "patient_id": "juan-001",
+  "name": "Juan Esteban Rodriguez",
+  "age": 22,
+  "symptoms": "dolor de cabeza",
+  "arrival_source": "simulado",
+  "notes": "Simulación: comprobar que monitor recibe patient.hospitalize"
+}
