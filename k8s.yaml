@@ -89,8 +89,7 @@ spec:
       targetPort: 8001
   type: ClusterIP
 ---
-
-# Admission service (producer / seeder)
+# Doctor Assignment service (consumer / worker)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -111,8 +110,8 @@ spec:
           image: hospital-doctor-assignment:latest
           imagePullPolicy: IfNotPresent
           env:
-            - name: RABBITMQ_URL
-              value: amqp://guest:guest@rabbitmq/
+            - name: RABBITMQ_HOST
+              value: rabbitmq
             - name: SERVICE_NAME
               value: doctor-assignment
           ports:
@@ -129,8 +128,7 @@ spec:
   ports:
     - port: 8003
       targetPort: 8003
-  type: ClusterIP
----
+
 # monitor (listens to all topics)
 apiVersion: apps/v1
 kind: Deployment
@@ -172,4 +170,86 @@ spec:
   ports:
     - port: 8000
       targetPort: 8000
+  type: ClusterIP
+---
+#treatment service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: treatment
+  namespace: hospital
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: treatment
+  template:
+    metadata:
+      labels:
+        app: treatment
+    spec:
+      containers:
+        - name: treatment
+          image: hospital-treatment:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RABBITMQ_HOST
+              value: rabbitmq
+            - name: SERVICE_NAME
+              value: treatment
+          ports:
+            - containerPort: 8006
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: treatment
+  namespace: hospital
+spec:
+  selector:
+    app: treatment
+  ports:
+    - port: 8006
+      targetPort: 8006
+  type: ClusterIP
+---
+# DISCHARGE SERVICE
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discharge
+  namespace: hospital
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discharge
+  template:
+    metadata:
+      labels:
+        app: discharge
+    spec:
+      containers:
+        - name: discharge
+          image: hospital-discharge:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RABBITMQ_HOST
+              value: rabbitmq
+            - name: SERVICE_NAME
+              value: discharge
+          ports:
+            - containerPort: 8009
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: discharge
+  namespace: hospital
+spec:
+  selector:
+    app: discharge
+  ports:
+    - port: 8009
+      targetPort: 8009
   type: ClusterIP

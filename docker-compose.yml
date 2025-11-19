@@ -17,7 +17,17 @@ services:
   admission:
     build: ./admission
     ports:
-      - "8000:8000"
+      - "8001:8001"
+    restart: unless-stopped
+    environment:
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      - rabbitmq
+
+    treatment:
+    build: ./treatment
+    ports:
+      - "8006:8006"
     restart: unless-stopped
     environment:
       RABBITMQ_HOST: rabbitmq
@@ -38,7 +48,17 @@ services:
   monitor:
     build: ./monitor
     ports:
-      - "8011:8000"
+      - "8000:8000"
+    environment:
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      - rabbitmq
+
+  discharge:  
+    build: ./discharge
+    ports:
+      - "8009:8000"
+    restart: unless-stopped
     environment:
       RABBITMQ_HOST: rabbitmq
     depends_on:
