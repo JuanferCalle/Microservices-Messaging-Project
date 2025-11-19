@@ -131,3 +131,46 @@ spec:
     - port: 8000
       targetPort: 8000
   type: ClusterIP
+---
+# Treatment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: treatment
+  namespace: hospital
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: treatment
+  template:
+    metadata:
+      labels:
+        app: treatment
+    spec:
+      containers:
+        - name: treatment
+          image: hospital-treatment:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RABBITMQ_HOST
+              value: rabbitmq
+            - name: SERVICE_NAME
+              value: treatment
+          ports:
+            - containerPort: 8006
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: treatment
+  namespace: hospital
+spec:
+  selector:
+    app: treatment
+  ports:
+    - port: 8006
+      targetPort: 8006
+  type: ClusterIP
+
+
